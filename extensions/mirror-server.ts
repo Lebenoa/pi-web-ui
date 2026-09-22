@@ -111,6 +111,72 @@ type ModelCandidate = {
   id?: string;
 };
 
+/**
+ * Built-in slash commands the web UI can drive. `pi.getCommands()` excludes
+ * builtins by design ("each frontend prepends its own builtins"), so the web
+ * frontend owns this list, mirroring the ACP-advertised set: only commands
+ * with a text-mode handler, no TUI-overlay/dashboard/OAuth/interactive-only
+ * entries, and nothing that quits or deletes the host session.
+ */
+const WEB_BUILTIN_COMMANDS: ReadonlyArray<{ name: string; description: string }> = [
+  {
+    name: "advisor",
+    description:
+      "Toggle the advisor (a second model that reviews each turn and injects notes) — on/off/status/dump",
+  },
+  { name: "model", description: "Switch model for this session" },
+  {
+    name: "switch",
+    description: "Switch model for this session; accepts fuzzy ids, provider/id, @role, :level",
+  },
+  { name: "fast", description: "Toggle priority service tier — on/off/status" },
+  {
+    name: "skillful",
+    description: "Toggle listing available skills in the system prompt (session only) — on/off/status",
+  },
+  { name: "extended-context", description: "Toggle extended context windows" },
+  { name: "plan", description: "Toggle plan mode (agent plans before executing)" },
+  { name: "plan-review", description: "Re-open the plan review for the latest plan (plan mode only)" },
+  { name: "vibe", description: "Toggle vibe mode (direct persistent fast/good worker sessions; read-only toolset)" },
+  {
+    name: "goal",
+    description: "Toggle goal mode (persistent autonomous objective for this session) — set/show/pause/resume/drop/budget",
+  },
+  { name: "guided-goal", description: "Have the agent interview you in chat, then set up goal mode" },
+  { name: "queue", description: "Queue a message for after the agent yields" },
+  { name: "prewalk", description: "Arm or restart a one-shot model handoff" },
+  { name: "todo", description: "View or modify the agent's todo list" },
+  { name: "session", description: "Session management commands" },
+  { name: "jobs", description: "Show async background jobs status" },
+  { name: "usage", description: "Show provider usage and limits" },
+  { name: "context", description: "Show estimated context usage breakdown" },
+  { name: "tools", description: "Show tools currently visible to the agent" },
+  { name: "export", description: "Export session to HTML file" },
+  { name: "share", description: "Share session via an encrypted link (share server or secret gist)" },
+  { name: "collab", description: "Share this session live via a relay" },
+  { name: "join", description: "Join a shared collab session" },
+  { name: "leave", description: "Leave the collab session" },
+  { name: "browser", description: "Toggle browser eval-prelude headless vs visible mode" },
+  { name: "copy", description: "Pick text or code from the conversation to copy" },
+  { name: "open", description: "Open the last link from the conversation in your browser (or pick one with /copy)" },
+  { name: "memory", description: "Inspect and operate memory maintenance" },
+  { name: "compact", description: "Manually compact the session context" },
+  { name: "shake", description: "Drop heavy content from context (tool results, large blocks)" },
+  { name: "handoff", description: "Summarize the session into a handoff document and compact in place" },
+  { name: "clear", description: "Clear the conversation context in place, keeping the session" },
+  { name: "new", description: "Start a new session" },
+  { name: "rename", description: "Rename the current session (omit title to generate)" },
+  { name: "resume", description: "Resume a different session" },
+  { name: "pin", description: "Pin or unpin a session at the top of the resume list" },
+  { name: "retry", description: "Retry the last failed agent turn" },
+  { name: "cleanse", description: "Detect and fix project diagnostics with weighted parallel subagents" },
+  { name: "tan", description: "Run a full background agent on tangential work" },
+  { name: "btw", description: "Ask a side question, or browse this session's BTW history" },
+  { name: "force", description: "Force next turn to use a specific tool" },
+  { name: "pause", description: "Freeze all agents (main, subagents, advisor) until resumed" },
+  { name: "reload-plugins", description: "Reload all plugins (skills, commands, hooks, tools, agents, MCP)" },
+];
+
 type ThinkingConfig = Record<string, unknown> & {
   mode?: string;
   efforts?: unknown;
@@ -913,14 +979,22 @@ export default function (pi: ExtensionAPI) {
           // Slash commands and skills discoverable in the current session.
           // `pi.getCommands()` covers extension-, prompt- and skill-sourced
           // commands (builtins are intentionally excluded by the agent);
-          // skills come from the process-global active skill registry.
-          const commands = pi.getCommands().map((command) => ({
-            name: command.name,
-            description: command.description,
-            source: command.source,
-            location: command.location,
-            path: command.path,
-          }));
+          // the web frontend prepends its own builtin list like the TUI does.
+          const seen = new Set<string>();
+          const commands = [...WEB_BUILTIN_COMMANDS, ...pi.getCommands()].flatMap((command) => {
+            if (seen.has(command.name)) return [];
+            seen.add(command.name);
+            const source = "source" in command && command.source ? command.source : "builtin";
+            return [
+              {
+                name: command.name,
+                description: command.description,
+                source,
+                ...("location" in command && command.location ? { location: command.location } : {}),
+                ...("path" in command && command.path ? { path: command.path } : {}),
+              },
+            ];
+          });
           const piModule = (pi as ExtensionAPIWithPi).pi;
           const skills = (
             typeof piModule?.getActiveSkills === "function" ? piModule.getActiveSkills() : []
