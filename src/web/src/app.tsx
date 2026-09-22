@@ -710,8 +710,10 @@ export function App() {
               archAvailable={archAvailable}
               archModeEnabled={archModeEnabled}
               chatStatus={chatStatus}
+              commandSurface={commandSurface}
               connection={connection}
               onAbort={abort}
+              onRequestCommands={() => void loadCommandSurface()}
               onSubmit={submitMessage}
               onToggleArchMode={toggleArchMode}
               onValueChange={setDraftText}
