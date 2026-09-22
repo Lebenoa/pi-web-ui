@@ -302,6 +302,28 @@ export function isAskDialogQuestion(value: unknown): value is AskDialogQuestion 
   return true;
 }
 
+export type SlashCommandInfo = {
+  name: string;
+  description?: string;
+  source?: "extension" | "prompt" | "skill" | string;
+  location?: string;
+  path?: string;
+};
+
+export type SkillInfo = {
+  name: string;
+  description?: string;
+  source?: string;
+  hide?: boolean;
+  /** The draft text that invokes this skill, e.g. `/skill:<name>`. */
+  trigger?: string;
+};
+
+export type CommandSurface = {
+  commands: SlashCommandInfo[];
+  skills: SkillInfo[];
+};
+
 export type ExtensionDialog = {
   id: string;
   method: "select" | "confirm" | "input" | "editor" | "notify" | "ask";

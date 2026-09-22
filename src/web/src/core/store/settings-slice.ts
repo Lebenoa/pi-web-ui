@@ -1,5 +1,6 @@
 import { shortModelName } from "../format";
 import type { AuthStateResult, SettingsSlice, SettingsStateResult, StoreSlice } from "./types";
+import type { CommandSurface, SkillInfo, SlashCommandInfo } from "../types";
 
 const initialThemeMode = () =>
   (localStorage.getItem("pi-web-ui-theme-mode") as SettingsSlice["themeMode"] | null) || "system";
@@ -17,6 +18,7 @@ export const createSettingsSlice: StoreSlice<SettingsSlice> = (set, get) => ({
   archModeEnabled: false,
   themeMode: initialThemeMode(),
   showThinking: initialShowThinking(),
+  commandSurface: null,
 
   refreshSettingsState: async () => {
     try {
@@ -70,6 +72,27 @@ export const createSettingsSlice: StoreSlice<SettingsSlice> = (set, get) => ({
   setArchModeEnabled: (archModeEnabled) => set({ archModeEnabled }),
   setThemeMode: (themeMode) => set({ themeMode }),
   setShowThinking: (showThinking) => set({ showThinking }),
+
+  loadCommandSurface: async () => {
+    try {
+      const data = (await get().send("get_commands")) as Partial<CommandSurface> | undefined;
+      const commands = Array.isArray(data?.commands)
+        ? data.commands.filter(
+            (command): command is SlashCommandInfo =>
+              typeof command === "object" && command !== null && typeof command.name === "string",
+          )
+        : [];
+      const skills = Array.isArray(data?.skills)
+        ? data.skills.filter(
+            (skill): skill is SkillInfo =>
+              typeof skill === "object" && skill !== null && typeof skill.name === "string",
+          )
+        : [];
+      set({ commandSurface: { commands, skills } });
+    } catch (error) {
+      console.error("[pi-web-ui] get_commands failed", error);
+    }
+  },
 
   cycleThinking: async () => {
     try {

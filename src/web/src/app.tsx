@@ -87,8 +87,10 @@ export function App() {
   const openArtifact = usePiWebUiStore((state) => state.openArtifact);
   const openGitDiff = usePiWebUiStore((state) => state.openGitDiff);
   const refreshAuthState = usePiWebUiStore((state) => state.refreshAuthState);
-  const refreshRightPanelTab = usePiWebUiStore((state) => state.refreshRightPanelTab);
   const refreshSettingsState = usePiWebUiStore((state) => state.refreshSettingsState);
+  const loadCommandSurface = usePiWebUiStore((state) => state.loadCommandSurface);
+  const commandSurface = usePiWebUiStore((state) => state.commandSurface);
+  const refreshRightPanelTab = usePiWebUiStore((state) => state.refreshRightPanelTab);
   const requestConversationSync = usePiWebUiStore((state) => state.requestConversationSync);
   const renameActiveSession = usePiWebUiStore((state) => state.renameActiveSession);
   const respondDialog = usePiWebUiStore((state) => state.respondDialog);
@@ -514,6 +516,12 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [abort, chatStatus, commandOpen, modelOpen, settingsOpen]);
 
+  useEffect(() => {
+    if (commandOpen) {
+      void loadCommandSurface();
+    }
+  }, [commandOpen, loadCommandSurface]);
+
   const totalCost = useMemo(
     () => items.reduce((sum, item) => sum + (item.kind === "message" ? item.cost || 0 : 0), 0),
     [items],
@@ -761,7 +769,21 @@ export function App() {
             thinkingLevel={thinkingLevel}
           />
         )}
-        {commandOpen && <CommandPalette commands={commandActions} onClose={() => setCommandOpen(false)} />}
+        {commandOpen && (
+          <CommandPalette
+            commands={commandActions}
+            loading={commandSurface === null}
+            onClose={() => setCommandOpen(false)}
+            onInsert={(text) => {
+              setDraftText((current) => {
+                const prefix = current.trim().length === 0 ? "" : current.endsWith(" ") ? "" : " ";
+                return current + prefix + text;
+              });
+              document.querySelector<HTMLTextAreaElement>('textarea[name="message"]')?.focus();
+            }}
+            surface={commandSurface}
+          />
+        )}
         {dialog && (
           <ExtensionDialogView
             dialog={dialog}

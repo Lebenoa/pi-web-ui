@@ -3,6 +3,7 @@ import type { PiClient } from "../pi-client";
 import type {
   ChatItem,
   ChatSubmitStatus,
+  CommandSurface,
   ConnectionState,
   ExtensionDialog,
   FileContentResult,
@@ -80,8 +81,10 @@ export type SettingsSlice = {
   archModeEnabled: boolean;
   themeMode: ThemeMode;
   showThinking: boolean;
+  commandSurface: CommandSurface | null;
   refreshSettingsState: () => Promise<void>;
   refreshAuthState: () => Promise<void>;
+  loadCommandSurface: () => Promise<void>;
   setAvailableModels: (models: ModelInfo[]) => void;
   setCurrentModel: (model: ModelInfo | null) => void;
   setThinkingLevel: (level: string) => void;

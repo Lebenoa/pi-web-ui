@@ -129,6 +129,12 @@ type ExtensionAPIWithEvents = ExtensionAPI & {
   };
 };
 
+type ExtensionAPIWithPi = ExtensionAPI & {
+  pi?: {
+    getActiveSkills?: () => unknown[];
+  };
+};
+
 type AliveWebSocket = WebSocket & {
   isAlive?: boolean;
 };
@@ -900,6 +906,38 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           sendTo(ws, success({ entries: ctx.sessionManager.getEntries() }));
+          break;
+        }
+
+        case "get_commands": {
+          // Slash commands and skills discoverable in the current session.
+          // `pi.getCommands()` covers extension-, prompt- and skill-sourced
+          // commands (builtins are intentionally excluded by the agent);
+          // skills come from the process-global active skill registry.
+          const commands = pi.getCommands().map((command) => ({
+            name: command.name,
+            description: command.description,
+            source: command.source,
+            location: command.location,
+            path: command.path,
+          }));
+          const piModule = (pi as ExtensionAPIWithPi).pi;
+          const skills = (
+            typeof piModule?.getActiveSkills === "function" ? piModule.getActiveSkills() : []
+          )
+            .filter((skill): skill is { name: string; description?: string; source?: string; hide?: boolean } =>
+              typeof skill === "object" &&
+              skill !== null &&
+              typeof (skill as { name?: unknown }).name === "string",
+            )
+            .map((skill) => ({
+              name: skill.name,
+              description: skill.description,
+              source: skill.source,
+              hide: skill.hide === true,
+              trigger: `/skill:${skill.name}`,
+            }));
+          sendTo(ws, success({ commands, skills }));
           break;
         }
 
