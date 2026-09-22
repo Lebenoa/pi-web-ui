@@ -82,6 +82,7 @@ export type RpcEvent = {
   notifyType?: "info" | "warning" | "error";
   enabled?: boolean;
   thinkingLevel?: string;
+  questions?: unknown[];
   model?: ModelInfo;
 };
 
@@ -274,12 +275,40 @@ export type RightPanelTab =
       updatedAt: number;
     };
 
+export type AskDialogOption = {
+  label: string;
+  description?: string;
+  preview?: string;
+};
+
+export type AskDialogQuestion = {
+  id: string;
+  question: string;
+  header?: string;
+  options: AskDialogOption[];
+  multi?: boolean;
+  recommended?: number;
+};
+
+/** Runtime guard for ask-dialog questions arriving over the websocket. */
+export function isAskDialogQuestion(value: unknown): value is AskDialogQuestion {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<AskDialogQuestion>;
+  if (typeof candidate.id !== "string" || typeof candidate.question !== "string") return false;
+  if (!Array.isArray(candidate.options)) return false;
+  for (const option of candidate.options) {
+    if (typeof option !== "object" || option === null || typeof option.label !== "string") return false;
+  }
+  return true;
+}
+
 export type ExtensionDialog = {
   id: string;
-  method: "select" | "confirm" | "input" | "editor" | "notify";
+  method: "select" | "confirm" | "input" | "editor" | "notify" | "ask";
   title?: string;
   message?: string;
   options?: string[];
+  questions?: AskDialogQuestion[];
   timeout?: number;
   placeholder?: string;
   prefill?: string;

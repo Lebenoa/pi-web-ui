@@ -199,6 +199,176 @@ function supportedThinkingLevels(model: unknown): string[] {
   if (efforts.length === 0) return [...FALLBACK_THINKING_LEVELS];
   return ["off", ...efforts];
 }
+/**
+
+ * Bridges the agent's `ask` tool to connected browser clients.
+ *
+ * The built-in ask tool renders its dialog in the terminal TUI only; when a
+ * pi-web-ui browser is attached we re-register `ask` so the question and its
+ * choices are broadcast to the browser instead, and the user's answer is
+ * routed back through `extension_ui_response`. With no browser connected the
+ * tool delegates to the native built-in (terminal dialog), so terminal-only
+ * sessions behave exactly as before.
+ */
+
+/** An `ask` dialog question as sent to the browser. */
+type AskDialogQuestion = {
+  id: string;
+  question: string;
+  header?: string;
+  options: Array<{ label: string; description?: string; preview?: string }>;
+  multi?: boolean;
+  recommended?: number;
+};
+
+/** The browser's answer to one question. */
+type AskDialogAnswer = {
+  id: string;
+  selectedOptions: string[];
+  customInput?: string;
+  note?: string;
+};
+
+/** Shape-checked raw answer entry from the browser (validated before use). */
+type AskAnswerCandidate = {
+  id: string;
+  selectedOptions?: unknown;
+  customInput?: unknown;
+  note?: unknown;
+};
+
+/** Resolved browser response for a pending ask dialog. */
+type AskDialogResponse = {
+  results?: AskDialogAnswer[];
+  cancelled?: boolean;
+  timedOut?: boolean;
+};
+
+const pendingAsks = new Map<string, (response: AskDialogResponse | "unavailable") => void>();
+let askSequence = 0;
+
+function resolveAllPendingAsks(response: AskDialogResponse | "unavailable"): void {
+  for (const resolve of pendingAsks.values()) {
+    resolve(response);
+  }
+  pendingAsks.clear();
+}
+
+/** Formats a single-question answer exactly like the built-in ask tool. */
+function formatSingleAskResponse(result: AskDialogAnswer & { multi?: boolean }): string {
+  const responseParts: string[] = [];
+  if (result.selectedOptions.length > 0) {
+    responseParts.push(
+      result.multi
+        ? `User selected: ${result.selectedOptions.join(", ")}`
+        : `User selected: ${result.selectedOptions[0]}`,
+    );
+  }
+  if (result.customInput !== undefined) {
+    responseParts.push(
+      result.customInput.includes("\n")
+        ? `User provided custom input:\n${result.customInput
+            .split("\n")
+            .map((line) => `  ${line}`)
+            .join("\n")}`
+        : `User provided custom input: ${result.customInput}`,
+    );
+  }
+  if (result.note) {
+    responseParts.push(
+      result.note.includes("\n")
+        ? `User added note:\n${result.note
+            .split("\n")
+            .map((line) => `  ${line}`)
+            .join("\n")}`
+        : `User added note: ${result.note}`,
+    );
+  }
+  return responseParts.length > 0 ? responseParts.join("\n") : "(no selection)";
+}
+
+/** Formats multi-question answers exactly like the built-in ask tool. */
+function formatAskResultsText(
+  questions: AskDialogQuestion[],
+  answers: AskDialogAnswer[],
+): string {
+  const byId = new Map(answers.map((answer) => [answer.id, answer]));
+  if (questions.length === 1 && answers.length === 1) {
+    const question = questions[0];
+    const answer = answers[0];
+    if (answer.id === question.id) {
+      return formatSingleAskResponse({ ...answer, multi: question.multi });
+    }
+  }
+  return questions
+    .map((question) => {
+      const result = byId.get(question.id);
+      const noteSuffix = result?.note ? ` (note: ${result.note})` : "";
+      if (result?.customInput !== undefined) {
+        return `${question.id}: "${result.customInput}"${noteSuffix}`;
+      }
+      const selected = result?.selectedOptions ?? [];
+      if (selected.length > 0) {
+        const suffix = `${result?.timedOut ? " (auto-selected after timeout)" : ""}${noteSuffix}`;
+        return question.multi
+          ? `${question.id}: [${selected.join(", ")}]${suffix}`
+          : `${question.id}: ${selected[0]}${suffix}`;
+      }
+      return question.multi ? `${question.id}: []${noteSuffix}` : `${question.id}: (cancelled)${noteSuffix}`;
+    })
+    .join("\n");
+}
+
+/** Description presented to the model for the bridged ask tool (mirrors the built-in). */
+const ASK_TOOL_DESCRIPTION = `Ask user for clarification/input during task execution.
+
+<conditions>
+- Multiple approaches with significantly different tradeoffs user should weigh.
+</conditions>
+
+<instruction>
+- \`recommended: <index>\` marks default (0-indexed); " (Recommended)" added automatically.
+- Use \`questions\` for related questions, not one at a time.
+- Set \`multi: true\` on a question to allow multiple selections.
+- Short option labels; explanatory tradeoffs in \`description\`, not labels.
+- A custom input (\`Other\`) can be a clarifying question, not an answer (e.g. "what do you mean?", "explain X", "why?"). If so, answer it in response text first, then call \`ask\` again for the still-open question(s).
+</instruction>
+
+<caution>
+- Provide 2-5 concise, distinct options.
+</caution>
+
+<critical>
+- Default to action. Resolve ambiguity via repo conventions, existing patterns, reasonable defaults. Exhaust existing sources (code, configs, docs, history) before asking. Ask only when options have materially different tradeoffs the user must decide.
+- If multiple choices acceptable: pick most conservative/standard option; proceed; state choice.
+- Do NOT include "Other"; UI automatically adds "Other (type your own)" to every question.
+</critical>`;
+
+/** The canonical `ask` tool schema (mirrors the built-in tool's parameters). */
+const askToolSchema = (z: ExtensionAPI["zod"]) =>
+  z.object({
+    questions: z
+      .array(
+        z.object({
+          id: z.string().describe("question id"),
+          question: z.string().describe("question text"),
+          header: z.string().optional().describe("optional short display chip for rich ask dialogs"),
+          options: z
+            .array(
+              z.object({
+                label: z.string().describe("display label"),
+                description: z.string().optional().describe("optional explanatory text displayed below the label"),
+                preview: z.string().optional().describe("optional rich preview content for interactive ask dialogs"),
+              }),
+            )
+            .describe("available options"),
+          multi: z.boolean().optional().describe("allow multiple selections"),
+          recommended: z.number().optional().describe("recommended option index"),
+        }),
+      )
+      .describe("questions to ask"),
+  });
+
 // @ts-expect-error — __dirname is provided by jiti at runtime
 const STATIC_DIR = process.env.PI_WEB_UI_STATIC_DIR || findStaticDir();
 
@@ -824,6 +994,39 @@ export default function (pi: ExtensionAPI) {
           break;
         }
 
+        case "extension_ui_response": {
+          // Route a browser answer to the pending `ask` tool dialog.
+          const dialogId = typeof params.id === "string" ? params.id : "";
+          const resolve = pendingAsks.get(dialogId);
+          if (!resolve) {
+            sendTo(ws, error(`No pending ask dialog with id "${dialogId}"`));
+            break;
+          }
+          pendingAsks.delete(dialogId);
+          const normalizeString = (value: unknown): string | undefined =>
+            typeof value === "string" && value.length > 0 ? value : undefined;
+          const rawResults = Array.isArray(params.results) ? params.results : [];
+          resolve({
+            cancelled: params.cancelled === true,
+            timedOut: params.timedOut === true,
+            results: rawResults
+              .filter(
+                (raw): raw is AskAnswerCandidate =>
+                  typeof raw === "object" && raw !== null && "id" in raw && typeof raw.id === "string",
+              )
+              .map((raw) => ({
+                id: raw.id,
+                selectedOptions: Array.isArray(raw.selectedOptions)
+                  ? raw.selectedOptions.filter((option): option is string => typeof option === "string")
+                  : [],
+                customInput: normalizeString(raw.customInput),
+                note: normalizeString(raw.note),
+              })),
+          });
+          sendTo(ws, success());
+          break;
+        }
+
         case "get_session_stats": {
           if (!ctx) {
             sendTo(ws, error("No context available"));
@@ -1012,11 +1215,6 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           sendTo(ws, success({ editorText: result.editorText, cancelled: false }));
-          break;
-        }
-
-        case "extension_ui_response": {
-          sendTo(ws, success());
           break;
         }
 
@@ -1468,11 +1666,18 @@ export default function (pi: ExtensionAPI) {
 
       ws.on("close", () => {
         clients.delete(ws);
+        if (clients.size === 0) {
+          // No browser left to answer dialogs — fall back to the terminal.
+          resolveAllPendingAsks("unavailable");
+        }
         updateMirrorStatus();
       });
 
       ws.on("error", () => {
         clients.delete(ws);
+        if (clients.size === 0) {
+          resolveAllPendingAsks("unavailable");
+        }
         updateMirrorStatus();
       });
     });
@@ -1556,6 +1761,97 @@ export default function (pi: ExtensionAPI) {
     latestExecuteCtx = null;
     latestCtx = null;
     liveArtifactPaths.clear();
+    resolveAllPendingAsks("unavailable");
     stopServer();
+  });
+
+  // ═══════════════════════════════════════
+  // Ask tool bridging — surface agent `ask` calls to browser clients
+  // ═══════════════════════════════════════
+  pi.registerTool({
+    name: "ask",
+    label: "Ask",
+    description: ASK_TOOL_DESCRIPTION,
+    parameters: askToolSchema(pi.zod),
+    approval: "read",
+    loadMode: "discoverable",
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      // Re-registering the built-in `ask` makes the native implementation
+      // available through ctx.invokeTool — used as the terminal fallback.
+      const browserAvailable = clients.size > 0;
+      if (!browserAvailable) {
+        return (
+          ctx.invokeTool?.(params as unknown as Record<string, unknown>, { signal }) ?? {
+            content: [{ type: "text", text: "Ask tool unavailable: no terminal or browser UI connected" }],
+            details: {},
+          }
+        );
+      }
+      const questions = Array.isArray(params.questions) ? params.questions : [];
+      if (questions.length === 0) {
+        return { content: [{ type: "text", text: "Error: questions must not be empty" }], details: {} };
+      }
+      const id = `ask-${Date.now()}-${askSequence++}`;
+      const response = await new Promise<AskDialogResponse | "unavailable">((resolve) => {
+        pendingAsks.set(id, resolve);
+        broadcast({
+          type: "event",
+          event: "ask_dialog",
+          payload: { id, questions },
+        });
+        if (signal) {
+          signal.addEventListener(
+            "abort",
+            () => {
+              pendingAsks.delete(id);
+              resolve("unavailable");
+            },
+            { once: true },
+          );
+        }
+      });
+      pendingAsks.delete(id);
+      if (response === "unavailable") {
+        // Browser went away mid-dialog — fall back to the terminal dialog.
+        return (
+          ctx.invokeTool?.(params as unknown as Record<string, unknown>) ?? {
+            content: [{ type: "text", text: "Ask tool cancelled" }],
+            details: {},
+          }
+        );
+      }
+      if (response.cancelled) {
+        return { content: [{ type: "text", text: "Ask tool was cancelled by the user" }], details: { cancelled: true } };
+      }
+      const answers = Array.isArray(response.results) ? response.results : [];
+      const text = formatAskResultsText(questions, answers);
+      const details =
+        questions.length === 1
+          ? (() => {
+              const answer = answers.find((candidate) => candidate.id === questions[0]?.id);
+              return {
+                question: questions[0]?.question,
+                options: questions[0]?.options.map((option) => option.label) ?? [],
+                multi: questions[0]?.multi ?? false,
+                selectedOptions: answer?.selectedOptions ?? [],
+                customInput: answer?.customInput,
+                note: answer?.note,
+                timedOut: response.timedOut === true,
+              };
+            })()
+          : {
+              results: answers.map((answer) => ({
+                id: answer.id,
+                question: questions.find((question) => question.id === answer.id)?.question,
+                options: questions.find((question) => question.id === answer.id)?.options.map((option) => option.label) ?? [],
+                multi: questions.find((question) => question.id === answer.id)?.multi ?? false,
+                selectedOptions: answer.selectedOptions,
+                customInput: answer.customInput,
+                note: answer.note,
+                timedOut: response.timedOut === true,
+              })),
+            };
+      return { content: [{ type: "text", text }], details };
+    },
   });
 }

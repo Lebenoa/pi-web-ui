@@ -1,4 +1,5 @@
 import type { RpcEvent, StateSyncPayload, WsEvent } from "../types";
+import { isAskDialogQuestion } from "../types";
 import type { PiWebUiStore } from "./types";
 
 export function dispatchPiEvent(store: PiWebUiStore, data: WsEvent) {
@@ -23,6 +24,14 @@ export function dispatchPiEvent(store: PiWebUiStore, data: WsEvent) {
     case "thinking_level_changed":
       if (typeof event.thinkingLevel === "string") store.setThinkingLevel(event.thinkingLevel);
       break;
+    case "ask_dialog": {
+      const raw = Array.isArray(event.questions) ? event.questions : [];
+      const questions = raw.filter(isAskDialogQuestion);
+      if (typeof event.id === "string" && questions.length > 0) {
+        store.setDialog({ id: event.id, method: "ask", questions });
+      }
+      break;
+    }
     case "turn_end":
     case "session_tree":
       void store.requestConversationSync({ debounce: true });
