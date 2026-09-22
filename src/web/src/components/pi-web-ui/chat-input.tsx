@@ -30,9 +30,11 @@ type ChatInputProps = {
 
 type SlashEntry =
   | { kind: "skill"; skill: SkillInfo }
-  | { kind: "command"; command: SlashCommandInfo };
+  | { kind: "command"; command: SlashCommandInfo }
+  | { kind: "skill-select" };
 
 function entryKey(entry: SlashEntry): string {
+  if (entry.kind === "skill-select") return "skill-select";
   return entry.kind === "skill" ? `skill:${entry.skill.name}` : `command:${entry.command.name}`;
 }
 
@@ -67,24 +69,22 @@ export function ChatInput({
 
   const entries = useMemo<SlashEntry[]>(() => {
     if (!value.startsWith("/")) return [];
-    const rest = value.slice(1).trimStart();
-    const firstWord = rest.split(/\s/)[0] ?? "";
-    const skillMode = value.startsWith("/skill:");
+    // `/skill` and `/skill:` narrow to the loaded skills; anything else only
+    // matches slash commands. The general list exposes a single `/skill`
+    // entry (inserting `/skill:`) instead of polluting results with skills.
+    const skillMode = value === "/skill" || value.startsWith("/skill:");
     if (skillMode) {
-      const skillQuery = value.slice("/skill:".length).trimStart().split(/\s/)[0] ?? "";
+      const skillQuery =
+        value === "/skill" ? "" : (value.slice("/skill:".length).trimStart().split(/\s/)[0] ?? "");
       return skills
         .filter((skill) => skill.hide !== true)
         .filter((skill) => matchesPartial(skill.name, skillQuery))
         .map((skill): SlashEntry => ({ kind: "skill", skill }));
     }
-    const matchedSkills = skills
-      .filter((skill) => skill.hide !== true)
-      .filter(
-        (skill) =>
-          matchesPartial(skill.name, firstWord) ||
-          (skill.description ? matchesPartial(skill.description, firstWord) : false),
-      )
-      .map((skill): SlashEntry => ({ kind: "skill", skill }));
+    const firstWord = value.slice(1).trimStart().split(/\s/)[0] ?? "";
+    const skillEntry = matchesPartial("skill", firstWord)
+      ? ([{ kind: "skill-select" }] satisfies SlashEntry[])
+      : [];
     const matchedCommands = commands
       .filter(
         (command) =>
@@ -92,7 +92,7 @@ export function ChatInput({
           (command.description ? matchesPartial(command.description, firstWord) : false),
       )
       .map((command): SlashEntry => ({ kind: "command", command }));
-    return [...matchedSkills, ...matchedCommands];
+    return [...skillEntry, ...matchedCommands];
   }, [commands, skills, value]);
 
   // Fetch command data the first time `/` is typed, open/close the menu as
@@ -110,6 +110,11 @@ export function ChatInput({
   }, [commands.length, menuOpen, onRequestCommands, skills.length, value]);
 
   const insertEntry = (entry: SlashEntry): void => {
+    if (entry.kind === "skill-select") {
+      // Open the skills list; keep the menu open for the next selection.
+      onValueChange("/skill:");
+      return;
+    }
     const trigger = entry.kind === "skill" ? `/skill:${entry.skill.name}` : `/${entry.command.name}`;
     // Replace the leading slash token with the completed invocation; keep any
     // trailing draft text, collapsing the boundary to a single space.
@@ -163,7 +168,17 @@ export function ChatInput({
                   const key = entryKey(entry);
                   const isActive = index === activeIndex;
                   const trigger =
-                    entry.kind === "skill" ? `/skill:${entry.skill.name}` : `/${entry.command.name}`;
+                    entry.kind === "skill-select"
+                      ? "/skill"
+                      : entry.kind === "skill"
+                        ? `/skill:${entry.skill.name}`
+                        : `/${entry.command.name}`;
+                  const description =
+                    entry.kind === "skill-select"
+                      ? "Invoke a skill — pick one to insert /skill:<name>"
+                      : entry.kind === "skill"
+                        ? entry.skill.description || "Skill"
+                        : entry.command.description || entry.command.name;
                   return (
                     <button
                       className={cn(
@@ -181,11 +196,7 @@ export function ChatInput({
                       <span className={cn("shrink-0 font-mono text-xs", isActive ? "" : "text-muted-foreground")}>
                         {trigger}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {entry.kind === "skill"
-                          ? entry.skill.description || "Skill"
-                          : entry.command.description || entry.command.name}
-                      </span>
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{description}</span>
                       {entry.kind === "command" && entry.command.source && (
                         <span className="shrink-0 text-muted-foreground text-xs">{entry.command.source}</span>
                       )}
