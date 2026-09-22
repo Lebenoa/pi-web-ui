@@ -1,6 +1,6 @@
 # Releasing
 
-This document is the source of truth for publishing `@kkkiio/pi-web-ui` to npm and verifying the Pi package catalog entry.
+This document is the source of truth for publishing `@lebenoa/pi-web-ui` to npm and verifying the Pi package catalog entry.
 
 ## Release Policy
 
@@ -11,7 +11,7 @@ This document is the source of truth for publishing `@kkkiio/pi-web-ui` to npm a
 
 ## Prerequisites
 
-Use Node.js 18 or newer and an npm account that can publish `@kkkiio/pi-web-ui`.
+Use Node.js 18 or newer and an npm account that can publish `@lebenoa/pi-web-ui`.
 
 ```bash
 node --version
@@ -38,7 +38,7 @@ git branch --show-current
 Confirm package metadata:
 
 ```bash
-npm view @kkkiio/pi-web-ui version
+npm view @lebenoa/pi-web-ui version
 npm pkg get name version description repository pi files publishConfig
 ```
 
@@ -63,7 +63,7 @@ Before publishing, verify that `package.json` includes a stable `pi.image` URL i
   "extensions": [
     "./extensions/mirror-server.ts"
   ],
-  "image": "https://raw.githubusercontent.com/kkkiio/pi-web-ui/main/docs/images/pi-web-ui-example.png"
+  "image": "https://raw.githubusercontent.com/Lebenoa/pi-web-ui/main/docs/images/pi-web-ui-example.png"
 }
 ```
 
@@ -106,7 +106,7 @@ The output must include at least:
 Check the CDN path that pi.dev will use for README images after publish. Replace `<version>` with the version being released:
 
 ```bash
-curl -I -L https://cdn.jsdelivr.net/npm/@kkkiio/pi-web-ui@<version>/docs/images/pi-web-ui-example.png
+curl -I -L https://cdn.jsdelivr.net/npm/@lebenoa/pi-web-ui@<version>/docs/images/pi-web-ui-example.png
 ```
 
 For an unpublished version this may return 404 before publishing. After publishing it must return 200.
@@ -162,25 +162,25 @@ git push origin v<version>
 Confirm npm registry metadata:
 
 ```bash
-npm view @kkkiio/pi-web-ui version dist.tarball pi files --json
+npm view @lebenoa/pi-web-ui version dist.tarball pi files --json
 ```
 
 Confirm the README image is available through jsDelivr. Replace `<version>` with the published version:
 
 ```bash
-curl -I -L https://cdn.jsdelivr.net/npm/@kkkiio/pi-web-ui@<version>/docs/images/pi-web-ui-example.png
+curl -I -L https://cdn.jsdelivr.net/npm/@lebenoa/pi-web-ui@<version>/docs/images/pi-web-ui-example.png
 ```
 
 Confirm pi.dev preview media. This should return a non-null `media` object when `pi.image` is set:
 
 ```bash
-curl -L 'https://pi.dev/api/packages/preview-media?name=%40kkkiio%2Fpi-web-ui'
+curl -L 'https://pi.dev/api/packages/preview-media?name=%40lebenoa%2Fpi-web-ui'
 ```
 
 Open the package pages and verify both the search card image and README image render:
 
 - https://pi.dev/packages?name=web-ui
-- https://pi.dev/packages/@kkkiio/pi-web-ui?name=web-ui
+- https://pi.dev/packages/@lebenoa/pi-web-ui?name=web-ui
 
 If pi.dev still shows stale data, wait for registry and CDN caches to refresh, then retry the verification commands.
 
@@ -197,5 +197,5 @@ If a bad version is already published:
 5. If the bad version is dangerous, deprecate it with a clear message:
 
 ```bash
-npm deprecate @kkkiio/pi-web-ui@<bad-version> "Use @kkkiio/pi-web-ui@<fixed-version>; this release has broken package metadata."
+npm deprecate @lebenoa/pi-web-ui@<bad-version> "Use @lebenoa/pi-web-ui@<fixed-version>; this release has broken package metadata."
 ```

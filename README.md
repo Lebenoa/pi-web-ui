@@ -22,13 +22,13 @@ Pi Web UI connects to your running Pi session and gives you a browser interface.
 Install from GitHub:
 
 ```bash
-pi install git:github.com/kkkiio/pi-web-ui
+pi install git:github.com/Lebenoa/pi-web-ui
 ```
 
 Or from npm:
 
 ```bash
-pi install npm:@kkkiio/pi-web-ui
+pi install npm:@lebenoa/pi-web-ui
 ```
 
 ## Usage
@@ -119,7 +119,7 @@ graph LR
 ## Development
 
 ```bash
-git clone https://github.com/kkkiio/pi-web-ui.git
+git clone https://github.com/Lebenoa/pi-web-ui.git
 cd pi-web-ui
 npm install
 npm run build:web

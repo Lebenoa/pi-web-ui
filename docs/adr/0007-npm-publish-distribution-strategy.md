@@ -9,7 +9,7 @@ Accepted (2026-06-06)
 pi-web-ui contains a Vite+React frontend that compiles to `dist/` (~24MB, 666 files including Shiki syntax highlighting grammars). The package is installed via:
 
 - `pi install npm:pi-web-ui` (npm registry, primary user path)
-- `pi install git:github.com/kkkiio/pi-web-ui` (git clone, developer path)
+- `pi install git:github.com/Lebenoa/pi-web-ui` (git clone, developer path)
 
 We evaluated three approaches for distributing the compiled frontend.
 
