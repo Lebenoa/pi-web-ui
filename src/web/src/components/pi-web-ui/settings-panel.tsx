@@ -4,14 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { THINKING_LEVELS } from "../../core/constants";
-import type { ThemeMode } from "../../core/types";
+import { getSupportedThinkingLevels } from "../../core/constants";
+import type { ModelInfo, ThemeMode } from "../../core/types";
 import { Modal } from "./modal";
 
 export function SettingsPanel(props: {
   authConfigured: boolean;
   authEnabled: boolean;
   autoCompaction: boolean;
+  currentModel: ModelInfo | null;
   onClose: () => void;
   onRenameSession: (name: string) => void;
   onSetAutoCompaction: (enabled: boolean) => Promise<void>;
@@ -63,7 +64,7 @@ export function SettingsPanel(props: {
             value={props.autoCompaction}
           />
           <div className="flex flex-wrap gap-2">
-            {THINKING_LEVELS.map((level) => (
+            {getSupportedThinkingLevels(props.currentModel).map((level) => (
               <Button
                 key={level}
                 onClick={() => props.onSetThinking(level)}

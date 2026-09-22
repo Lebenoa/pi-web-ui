@@ -20,6 +20,9 @@ export function dispatchPiEvent(store: PiWebUiStore, data: WsEvent) {
     case "agent_end":
       store.applyAgentEnd();
       break;
+    case "thinking_level_changed":
+      if (typeof event.thinkingLevel === "string") store.setThinkingLevel(event.thinkingLevel);
+      break;
     case "turn_end":
     case "session_tree":
       void store.requestConversationSync({ debounce: true });

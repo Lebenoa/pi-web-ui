@@ -111,6 +111,17 @@ type ModelCandidate = {
   id?: string;
 };
 
+type ThinkingConfig = Record<string, unknown> & {
+  mode?: string;
+  efforts?: unknown;
+  defaultLevel?: string;
+};
+
+type ModelWithThinking = ModelCandidate & {
+  reasoning?: boolean;
+  thinking?: ThinkingConfig;
+};
+
 type ExtensionAPIWithEvents = ExtensionAPI & {
   events?: {
     on?: (eventType: string, listener: (payload: unknown) => void) => void;
@@ -170,6 +181,24 @@ const MAX_FILE_CONTENT_BYTES = 1024 * 1024;
 const MAX_GIT_OUTPUT_BYTES = 10 * 1024 * 1024;
 const ARTIFACT_TOOL_NAMES = new Set(["edit", "write"]);
 const MARKDOWN_EXTENSIONS = [".md", ".mdx", ".markdown"];
+
+/** Thinking selectors shown when the current model advertises no effort metadata. */
+const FALLBACK_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/**
+ * Returns the thinking selectors the active model actually supports: always
+ * "off", plus the model's declared effort ladder. Non-reasoning models get
+ * only "off"; models without metadata keep the fallback ladder.
+ */
+function supportedThinkingLevels(model: unknown): string[] {
+  const cast = model as ModelWithThinking | null | undefined;
+  if (!cast || cast.reasoning === false) return ["off"];
+  const efforts = Array.isArray(cast.thinking?.efforts)
+    ? cast.thinking.efforts.filter((effort): effort is string => typeof effort === "string")
+    : [];
+  if (efforts.length === 0) return [...FALLBACK_THINKING_LEVELS];
+  return ["off", ...efforts];
+}
 // @ts-expect-error — __dirname is provided by jiti at runtime
 const STATIC_DIR = process.env.PI_WEB_UI_STATIC_DIR || findStaticDir();
 
@@ -374,6 +403,7 @@ export default function (pi: ExtensionAPI) {
     "auto_retry_start",
     "auto_retry_end",
     "model_select",
+    "thinking_level_changed",
   ] as const;
 
   for (const eventType of eventTypes) {
@@ -754,22 +784,43 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "cycle_thinking_level": {
-          const levels = ["off", "minimal", "low", "medium", "high"];
+          const levels = supportedThinkingLevels(ctx?.model);
           const current = pi.getThinkingLevel();
-          const next = levels[(levels.indexOf(current) + 1) % levels.length] as
+          const currentIndex = levels.indexOf(current ?? "");
+          const next = levels[(currentIndex + 1) % levels.length] as
             | "off"
             | "minimal"
             | "low"
             | "medium"
-            | "high";
+            | "high"
+            | "xhigh"
+            | "max";
           pi.setThinkingLevel(next);
-          sendTo(ws, success({ level: next }));
+          // Report the effective level (after the agent's model clamp), not
+          // the requested one, so the UI never displays an unsupported value.
+          sendTo(ws, success({ level: pi.getThinkingLevel() ?? next, thinkingLevel: pi.getThinkingLevel() ?? next }));
           break;
         }
 
         case "set_thinking_level": {
-          pi.setThinkingLevel(params.level as "off" | "minimal" | "low" | "medium" | "high" | undefined);
-          sendTo(ws, success());
+          const levels = supportedThinkingLevels(ctx?.model);
+          const requested = typeof params.level === "string" ? params.level : undefined;
+          if (requested === undefined || !levels.includes(requested)) {
+            sendTo(ws, error(
+              `Thinking level "${requested ?? ""}" is not supported by the current model`,
+            ));
+            break;
+          }
+          pi.setThinkingLevel(requested as
+            | "off"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh"
+            | "max"
+            | undefined);
+          sendTo(ws, success({ level: pi.getThinkingLevel() ?? requested }));
           break;
         }
 

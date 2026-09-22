@@ -740,13 +740,18 @@ export function App() {
             authConfigured={authConfigured}
             authEnabled={authEnabled}
             autoCompaction={autoCompaction}
+            currentModel={currentModel}
             onClose={() => setSettingsOpen(false)}
             onRenameSession={renameActiveSession}
             onSetAutoCompaction={setAutoCompactionRemote}
             onSetTheme={setThemeMode}
             onSetThinking={async (level) => {
-              await compactSend("set_thinking_level", { level });
-              setThinkingLevel(level);
+              const result = (await compactSend("set_thinking_level", { level })) as
+                | { level?: string }
+                | undefined;
+              // The mirror server returns the effective (model-clamped) level;
+              // fall back to the requested one only if it omits the field.
+              setThinkingLevel(result?.level ?? level);
             }}
             onToggleAuth={toggleAuth}
             sessionName={sessionName}

@@ -90,6 +90,9 @@ export const createSettingsSlice: StoreSlice<SettingsSlice> = (set, get) => ({
         modelLabel: shortModelName(model.id),
         ...(model.contextWindow && { contextWindowSize: model.contextWindow }),
       });
+      // The agent re-clamps the thinking level to the new model's supported
+      // efforts — refresh so the UI shows the effective level, not a stale one.
+      await get().refreshSettingsState();
     } catch (error) {
       get().setError(error instanceof Error ? error.message : "Failed to switch model");
     }

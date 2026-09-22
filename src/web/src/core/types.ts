@@ -81,6 +81,7 @@ export type RpcEvent = {
   prefill?: string;
   notifyType?: "info" | "warning" | "error";
   enabled?: boolean;
+  thinkingLevel?: string;
   model?: ModelInfo;
 };
 
@@ -120,6 +121,12 @@ export type ModelInfo = {
   id: string;
   provider?: string;
   contextWindow?: number;
+  reasoning?: boolean;
+  thinking?: {
+    mode?: string;
+    efforts?: string[];
+    defaultLevel?: string;
+  };
 };
 
 export type WsRequest = {
